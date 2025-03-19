@@ -1,0 +1,68 @@
+`timescale 1ns/1ps
+
+module PFD_with_calibration (
+    input wire ref_clk,         // 參考時鐘輸入
+    input wire fb_clk,          // 反饋時鐘輸入
+    input wire rst_n,           // 系統復位，低電平有效
+    output reg up,              // up信號，表示ref_clk領先fb_clk
+    output reg down,            // down信號，表示fb_clk領先ref_clk
+    output reg calibration_done // 校準完成信號，表示檢測出頻率差異
+);
+
+    wire clear;                 // 清零信號，由up和down的與運算產生
+
+    // up信號邏輯：檢測ref_clk上升沿
+    always @(posedge ref_clk or posedge clear or negedge rst_n) begin
+        if (!rst_n) begin
+            up <= 1'b0;         // 系統復位時清零
+        end else if (clear) begin
+            up <= 1'b0;         // 清零信號時清零
+        end else begin
+            up <= 1'b1;         // ref_clk上升沿時置高
+        end
+    end
+
+    // down信號邏輯：檢測fb_clk上升沿
+    always @(posedge fb_clk or posedge clear or negedge rst_n) begin
+        if (!rst_n) begin
+            down <= 1'b0;       // 系統復位時清零
+        end else if (clear) begin
+            down <= 1'b0;       // 清零信號時清零
+        end else begin
+            down <= 1'b1;       // fb_clk上升沿時置高
+        end
+    end
+
+    // 清零邏輯：當up和down同時為高時觸發clear
+    assign clear = up & down;
+
+    // 計數器和閾值設置
+    reg [7:0] up_counter;       // up信號計數器
+    reg [7:0] down_counter;     // down信號計數器
+    parameter THRESHOLD = 8'd10; // 閾值，設為10個週期
+
+    // 計數器和calibration_done邏輯
+    always @(posedge ref_clk or negedge rst_n) begin
+        if (!rst_n) begin
+            up_counter <= 8'd0;
+            down_counter <= 8'd0;
+            calibration_done <= 1'b0; // 系統復位時清零
+        end else begin
+            if (clear) begin
+                up_counter <= 8'd0;
+                down_counter <= 8'd0;
+                calibration_done <= 1'b0; // 清零時重置
+            end else begin
+                if (up) begin
+                    up_counter <= up_counter + 1;
+                    if (up_counter >= THRESHOLD) begin
+                        calibration_done <= 1'b1; // ref_clk頻率高於fb_clk
+                    end
+                end else begin
+                    up_counter <= 8'd0;
+                end
+            end
+        end
+    end
+
+endmodule
